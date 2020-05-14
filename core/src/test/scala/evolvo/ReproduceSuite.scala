@@ -3,8 +3,10 @@ package evolvo
 class ReproduceSuite extends munit.FunSuite {
 
   test("Mate") {
-    val child = Reproduction(-5, 10).mate(Individual(100), Individual(100))
-    assert(clue(child.power) > 0, "Always larger than zero")
+    val children =
+      Reproduction(-5, 10, 2.3, 0.5).mate(Individual(100), Individual(100))
+    println(children)
+    assert(clue(children.size) > 0)
   }
 
 }
