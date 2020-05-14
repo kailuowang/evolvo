@@ -1,10 +1,12 @@
 package evolvo
 
-import cats.data.{Chain, State}
-
 import scala.util.Random
 import cats.implicits._
 
+import scala.collection.parallel.CollectionConverters._
+import Math.{max, min}
+
+import scala.annotation.tailrec
 case class Individual(power: Power) extends AnyVal {
   def mate(partner: Individual): Individual = {
     Individual((power + partner.power) / 2)
@@ -14,10 +16,11 @@ case class Individual(power: Power) extends AnyVal {
 case class Reproduction(powerChangeMean: Power,
                         powerChangeStdDev: Power,
                         numOfKidsMean: Double,
-                        numOfKidsStdDev: Double) {
+                        numOfKidsStdDev: Double,
+                        random: Random = new Random()) {
 
   def gaussian(mean: Double, stdDev: Double): Double =
-    Random.nextGaussian() * stdDev + mean
+    random.nextGaussian() * stdDev + mean
 
   def gaussian(mean: Int, stdDev: Int): Int =
     gaussian(mean.toDouble, stdDev.toDouble).toInt
@@ -25,84 +28,162 @@ case class Reproduction(powerChangeMean: Power,
   def mate(father: Individual, mother: Individual): List[Individual] = {
     List.fill(gaussian(numOfKidsMean, numOfKidsStdDev).toInt) {
       val mean = (father.power + mother.power) / 2
-      Individual(
-        Math.max(0, mean + gaussian(powerChangeMean, powerChangeStdDev))
-      )
+      Individual(max(0, mean + gaussian(powerChangeMean, powerChangeStdDev)))
     }
   }
 
 }
 
-case class Circle(members: Chain[Individual],
+case class Circle(private val members: List[Individual],
                   topPower: Power,
-                  bottomPower: Power) {
+                  bottomPower: Power)(val size: Int = members.size) {
+
+  def powers: Set[Power] = members.map(_.power).toSet
+
+  private[evolvo] def checkSize: Boolean = members.size == size
 
   private[evolvo] def addMember(individual: Individual,
                                 range: Power,
                                 maxCircleSize: Int): Option[Circle] = {
     val accepts =
-      members.size < maxCircleSize &&
+      size < maxCircleSize &&
         (individual.power - bottomPower) < range &&
         (topPower - individual.power) < range
 
     if (accepts)
       Some(
         Circle(
-          members.append(individual),
+          individual :: members,
           Math.max(topPower, individual.power),
           Math.min(bottomPower, individual.power)
-        )
+        )(size + 1)
       )
     else None
   }
 
+  def merge(that: Circle): Circle =
+    copy(
+      members ++ that.members,
+      topPower = max(topPower, that.topPower),
+      bottomPower = min(bottomPower, that.bottomPower)
+    )(size + that.size)
+
+  def newGeneration(reproduction: Reproduction): List[Individual] = {
+    val (left, right) =
+      members.splitAt(members.size / 2)
+    left.zip(right).flatMap {
+      case (father, mother) =>
+        reproduction.mate(father, mother)
+    }
+  }
+
 }
 
-case class Society(circles: Chain[Circle],
+case class Society(circles: List[Circle],
                    reproduction: Reproduction,
                    circleRange: Power,
                    maxCircleSize: Int) {
 
-  lazy val population = circles.map(_.members.size).fold
+  lazy val population = circles.map(_.size).sum
 
-  lazy val topCircle =
-    cats.data.NonEmptyChain.fromChain(circles).map(_.maximumBy(_.topPower))
+  lazy val topCircle: Option[Circle] =
+    cats.data.NonEmptyList.fromList(circles).map(_.maximumBy(_.topPower))
+
+  def topAndRest: (Option[Circle], List[Circle]) =
+    topCircle.fold((none[Circle], circles)) { tc =>
+      (topCircle, circles.partition(_ == tc)._2)
+    }
+
+  lazy val circleRank =
+    circles.toList.sortBy(c => -c.topPower)
 
   lazy val bottomCircle =
-    cats.data.NonEmptyChain.fromChain(circles).map(_.minimumBy(_.topPower))
+    cats.data.NonEmptyList.fromList(circles).map(_.minimumBy(_.topPower))
 
-  def newGeneration: Society = {
-    val newOne = copy(circles = Chain.nil)
-    circles.foldLeft(newOne) { (soc, circle) =>
-      val (left, right) =
-        circle.members.toList.splitAt(circle.members.size.toInt / 2)
-      left.zip(right).foldLeft(soc) { (s, pair) =>
-        val (father, mother) = pair
-        reproduction.mate(father, mother).foldLeft(s)(_.addMember(_))
+  def addMembers(members: List[Individual]): Society =
+    members.foldLeft(this)(_.addMember(_))
+
+  def evolve: Society = {
+    val mergeTopCircles: List[Circle] = {
+      @tailrec
+      def loop(rest: List[Circle], merged: Circle): List[Circle] =
+        rest match {
+          case Nil => List(merged)
+          case head :: tail if (merged.size < maxCircleSize) =>
+            val newMerged = head.merge(merged)
+            loop(tail, newMerged)
+          case _ => merged :: rest
+        }
+
+      circleRank match {
+        case head :: tail =>
+          loop(tail, head)
+        case Nil => Nil
       }
     }
+
+    copy(circles = Nil)
+      .addMembers(mergeTopCircles.flatMap(_.newGeneration(reproduction)))
   }
 
+  def show(circle: Circle): String =
+    s"""
+       |      Members: ${circle.size}
+       |      Top Power: ${circle.topPower}
+       |      Bottom Power: ${circle.bottomPower}
+       |""".stripMargin
+
+  def parEvolve(numOfParallelization: Int): Society = {
+    val subSize = circles.size / numOfParallelization
+    if (subSize > 0) {
+      val subSocieties =
+        circles
+          .sliding(subSize, subSize)
+          .map(cs => copy(circles = cs))
+          .toList
+          .par
+      subSocieties
+        .map(_.evolve)
+        .reduce { (l, r) =>
+          l.copy(circles = l.circles ++ r.circles)
+        }
+    } else evolve
+  }
+
+  def parAddMembers(members: List[Individual], parallelization: Int): Society =
+    if (members.isEmpty) this
+    else {
+      val subSize = members.size / parallelization
+      if (subSize > 0)
+        members
+          .sliding(subSize, subSize)
+          .toList
+          .par
+          .map(cs => copy(circles = Nil).addMembers(cs))
+          .foldLeft(this) { (l, r) =>
+            l.copy(circles = l.circles ++ r.circles)
+          } else addMembers(members)
+    }
+
   private[evolvo] def addMember(individual: Individual): Society = {
-    val (found, newCircles) =
-      circles
-        .traverse(
-          c =>
-            State { (found: Boolean) =>
-              if (found)
-                (found, c)
-              else
-                c.addMember(individual, circleRange, maxCircleSize)
-                  .fold((false, c))((true, _))
-          }
-        )
-        .run(false)
-        .value
+
+    val (newCircles, found) = circles.foldLeft((List.empty[Circle], false)) {
+      (pair, circle) =>
+        val (newList, found) = pair
+        if (!found) {
+          circle
+            .addMember(individual, circleRange, maxCircleSize)
+            .fold((circle :: newList, false))(
+              newCircle => (newCircle :: newList, true)
+            )
+        } else
+          (circle :: newList, true)
+
+    }
     val toUpdate =
       if (found) newCircles
       else
-        circles
-          .append(Circle(Chain(individual), individual.power, individual.power))
+        Circle(List(individual), individual.power, individual.power)() :: circles
     copy(circles = toUpdate)
 
   }

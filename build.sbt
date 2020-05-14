@@ -28,6 +28,11 @@ val devs = List(Developer)
 lazy val libs =
   org.typelevel.libraries
     .add("munit", version = "0.7.7", org = "org.scalameta", "munit-scalacheck")
+    .add(
+      "scala-parallel-collections",
+      version = "0.2.0",
+      org = "org.scala-lang.modules"
+    )
 
 val root = project
   .in(file("."))
@@ -38,7 +43,7 @@ val root = project
 lazy val core = project
   .settings(
     commonSettings,
-    libs.dependencies("cats-core"),
+    libs.dependencies("cats-core", "scala-parallel-collections"),
     libs.testDependencies("munit-scalacheck")
   )
 

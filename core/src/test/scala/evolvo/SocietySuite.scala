@@ -1,11 +1,8 @@
 package evolvo
-import cats.data.Chain
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop._
 import cats.implicits._
-
-import scala.util.Random
 
 class SocietySuite extends ScalaCheckSuite {
 
@@ -13,70 +10,81 @@ class SocietySuite extends ScalaCheckSuite {
     Gen.chooseNum(10, 100).map(Individual(_))
   )
 
-  def show(circle: Circle): String =
-    s"""
-       |      Members: ${circle.members.size}
-       |      Top Power: ${circle.topPower}
-       |      Bottom Power: ${circle.bottomPower}
-       |""".stripMargin
-
   def show(s: Society, generation: Int): String = {
 
     s"""
        |+++++++++++++++++++++++
        |Generation $generation
        |
-       |  Top circle: ${s.topCircle.map(show).getOrElse("")}
-       |  Bottom circle: ${s.bottomCircle.map(show).getOrElse("")}
+       |  Top circles: ${s.circleRank.take(5).map(s.show).mkString("\n")}
+       |  Bottom circle: ${s.bottomCircle.map(s.show).getOrElse("")}
        |  Num of circles ${s.circles.size}
        |  Population: ${s.population}
        |""".stripMargin
   }
 
+  property("organized into circles according to rule") {
+    forAll { (candidates: List[Individual]) =>
+      val range = 10
+      val maxSize = 13
+      val society =
+        Society(
+          Nil,
+          Reproduction(powerChangeMean = -1, powerChangeStdDev = 5, 2.7, 0.8),
+          range,
+          maxSize
+        ).parAddMembers(candidates, 2)
+
+      assertEquals(candidates.size, society.circles.map(_.size).sum)
+
+      def check(society: Society, gen: Int) = {
+        if (candidates.size > 10)
+          assert(society.population > 0)
+
+        society.circles.foreach { circle =>
+          val powers = circle.powers.toList
+          (powers.maximumOption, powers.minimumOption)
+            .mapN((max, min) => assert((clue(max) - clue(min)) < clue(range)))
+          assert(circle.checkSize, s"generation $gen checkSize fail")
+          assert(clue(circle.size) <= maxSize, s"generation $gen")
+        }
+      }
+
+      check(society, 0)
+      val finalResult = (0 to 3).foldLeft(society) { (s, i) =>
+        val r = s.parEvolve(2)
+        check(r, i)
+        r
+      }
+      assert(finalResult != null)
+
+    }
+  }
+
   test("new generation") {
+    import scala.util.Random
+
+    val parallelization = 12
     def gaussian(mean: Double, stdDev: Double): Double =
       Random.nextGaussian() * stdDev + mean
 
-    property("organized into circles according to rule") {
-      forAll { (candidates: List[Individual]) =>
-        val range = 10
-        val maxSize = 13
-        val society = Society(Chain.nil, null, range, maxSize)
-        val r = candidates.foldLeft(society)((s, i) => s.addMember(i))
-        r.circles.toIterable.foreach { circle =>
-          val powers = circle.members.map(_.power)
-          (powers.maximumOption, powers.minimumOption)
-            .mapN((max, min) => assert((clue(max) - clue(min)) < clue(range)))
-
-          assert(clue(circle.members.size) <= maxSize)
-        }
-
-        assertEquals(
-          candidates.size.toLong,
-          r.circles.map(_.members.size).toList.sum
-        )
-
-      }
-
-    }
-
-    val initPopulation = List.fill(5000)(Individual(gaussian(100, 15).toInt))
+    val initPopulation = List.fill(3000000)(Individual(gaussian(100, 15).toInt))
     val reproduction =
-      Reproduction(powerChangeMean = -1, powerChangeStdDev = 5, 2.8, 0.5)
+      Reproduction(powerChangeMean = -1, powerChangeStdDev = 5, 2.7, 0.8)
 
-    val society = initPopulation.foldLeft(
-      Society(Chain.nil, reproduction, circleRange = 15, 100)
-    )((s, i) => s.addMember(i))
+    val society =
+      Society(Nil, reproduction, circleRange = 15, 500)
+        .parAddMembers(initPopulation, parallelization)
 
-    val nOfGeneration = 10
+    println(show(society, 0))
+
+    val nOfGeneration = 20
 
     val r = (1 to nOfGeneration - 1).foldLeft(society) { (s, i) =>
-      val newGen = s.newGeneration
-      println(show(s, i))
+      val newGen = s.parEvolve(parallelization)
+      println(show(newGen, i))
       newGen
     }
-
-    println(show(r, nOfGeneration))
 
     assert(clue(r.population) >= initPopulation.size / 2)
 
