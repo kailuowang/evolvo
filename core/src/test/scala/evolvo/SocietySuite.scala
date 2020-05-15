@@ -64,13 +64,13 @@ class SocietySuite extends ScalaCheckSuite {
   test("new generation") {
     import scala.util.Random
 
-    val parallelization = 12
+    val parallelization = 14
     def gaussian(mean: Double, stdDev: Double): Double =
       Random.nextGaussian() * stdDev + mean
 
     val initPopulation = List.fill(3000000)(Individual(gaussian(100, 15).toInt))
     val reproduction =
-      Reproduction(powerChangeMean = -1, powerChangeStdDev = 5, 2.7, 0.8)
+      Reproduction(powerChangeMean = 0, powerChangeStdDev = 12.5, 2.6, 0.8)
 
     val society =
       Society(Nil, reproduction, circleRange = 15, 500)

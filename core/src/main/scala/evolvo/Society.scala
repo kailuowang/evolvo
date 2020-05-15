@@ -13,8 +13,8 @@ case class Individual(power: Power) extends AnyVal {
   }
 }
 
-case class Reproduction(powerChangeMean: Power,
-                        powerChangeStdDev: Power,
+case class Reproduction(powerChangeMean: Double,
+                        powerChangeStdDev: Double,
                         numOfKidsMean: Double,
                         numOfKidsStdDev: Double,
                         random: Random = new Random()) {
@@ -22,13 +22,12 @@ case class Reproduction(powerChangeMean: Power,
   def gaussian(mean: Double, stdDev: Double): Double =
     random.nextGaussian() * stdDev + mean
 
-  def gaussian(mean: Int, stdDev: Int): Int =
-    gaussian(mean.toDouble, stdDev.toDouble).toInt
-
   def mate(father: Individual, mother: Individual): List[Individual] = {
     List.fill(gaussian(numOfKidsMean, numOfKidsStdDev).toInt) {
-      val mean = (father.power + mother.power) / 2
-      Individual(max(0, mean + gaussian(powerChangeMean, powerChangeStdDev)))
+      val mean = (father.power + mother.power) / 2d
+      Individual(
+        max(0, (mean + gaussian(powerChangeMean, powerChangeStdDev)).toInt)
+      )
     }
   }
 
