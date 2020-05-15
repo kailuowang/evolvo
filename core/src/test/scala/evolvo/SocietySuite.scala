@@ -52,7 +52,7 @@ class SocietySuite extends ScalaCheckSuite {
 
 class Study extends munit.FunSuite {
 
-  test("new generation") {
+  test("new generation".ignore) {
 
     val parallelization = 4
 
@@ -61,12 +61,11 @@ class Study extends munit.FunSuite {
     println("Initial population")
     println(society.show)
 
-    val nOfGeneration = 20
+    val nOfGeneration = 5
 
     val r = (1 to nOfGeneration - 1).foldLeft(society) { (s, i) =>
       val newGen = s.parEvolve(parallelization)
-      println(
-        show"""
+      println(show"""
           |
           |
           |

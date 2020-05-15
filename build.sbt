@@ -38,13 +38,24 @@ val root = project
   .in(file("."))
   .dependsOn(core)
   .aggregate(core)
-  .settings(commonSettings)
+  .settings(commonSettings, crossScalaVersions := Nil)
 
 lazy val core = project
   .settings(
     commonSettings,
-    libs.dependencies("cats-core", "scala-parallel-collections"),
+    libs.dependencies("cats-core"),
     libs.testDependencies("munit-scalacheck")
+  )
+
+lazy val plot = project
+  .dependsOn(core)
+  .settings(
+    commonSettings,
+    resolvers += Resolver.bintrayRepo("cibotech", "public"),
+    libraryDependencies ++= Seq(
+      "com.cibo" %% "evilplot" % "0.6.3",
+      "com.github.darrenjw" %% "scala-view" % "0.5"
+    )
   )
 
 lazy val buildSettings = sharedBuildSettings(gh, libs)
@@ -54,6 +65,6 @@ lazy val commonSettings = buildSettings ++
   addCompilerPlugins(libs, "kind-projector") ++ sharedCommonSettings ++ scalacAllSettings ++ Seq(
   organization := "com.kailuowang",
   parallelExecution in Test := false,
-  scalaVersion := libs.vers("scalac_2.13"),
+  scalaVersion := libs.vers("scalac_2.12"),
   testFrameworks += new TestFramework("munit.Framework")
 ) ++ publishSettings

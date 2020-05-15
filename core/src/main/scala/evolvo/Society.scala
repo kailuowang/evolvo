@@ -3,7 +3,6 @@ package evolvo
 import scala.util.Random
 import cats.implicits._
 
-import scala.collection.parallel.CollectionConverters._
 import Math.{max, min}
 
 import cats.Show
@@ -27,7 +26,8 @@ case class Reproduction(powerChangeMeanTowardsPopulationMean: Double,
     val numOfChild: Int = {
       val ceil = Math.ceil(totalFertilityRate)
       val floor = Math.floor(totalFertilityRate)
-      val useUpperBound = random.nextDouble() < (totalFertilityRate - floor.toDouble)
+      val useUpperBound = random
+        .nextDouble() < (totalFertilityRate - floor.toDouble)
 
       (if (useUpperBound) ceil
        else floor).toInt
@@ -54,7 +54,7 @@ case class Circle(private val members: List[Individual],
                   topPower: Power,
                   bottomPower: Power)(val size: Int = members.size) {
 
-  def powers: Set[Power] = members.map(_.power).toSet
+  def powers: List[Power] = members.map(_.power)
 
   private[evolvo] def checkSize: Boolean = members.size == size
 
@@ -113,6 +113,13 @@ case class Society(circles: List[Circle],
   lazy val topCircle: Option[Circle] =
     cats.data.NonEmptyList.fromList(circles).map(_.maximumBy(_.topPower))
 
+  lazy val topCircleAveragePower: Option[Int] =
+    mergeTopCircles.headOption.map { c =>
+      c.powers.sum / c.size
+    }
+
+  lazy val populationAveragePower = allPowers.sum / population
+
   def topAndRest: (Option[Circle], List[Circle]) =
     topCircle.fold((none[Circle], circles)) { tc =>
       (topCircle, circles.partition(_ == tc)._2)
@@ -124,31 +131,32 @@ case class Society(circles: List[Circle],
   lazy val bottomCircle =
     cats.data.NonEmptyList.fromList(circles).map(_.minimumBy(_.topPower))
 
+  lazy val allPowers = circles.flatMap(_.powers)
+
   def addMembers(members: List[Individual]): Society =
     members.foldLeft(this)(_.addMember(_))
 
-  def evolve: Society = {
-    val mergeTopCircles: List[Circle] = {
-      @tailrec
-      def loop(rest: List[Circle], merged: Circle): List[Circle] =
-        rest match {
-          case Nil => List(merged)
-          case head :: tail if (merged.size < maxCircleSize) =>
-            val newMerged = head.merge(merged)
-            loop(tail, newMerged)
-          case _ => merged :: rest
-        }
-
-      circleRank match {
-        case head :: tail =>
-          loop(tail, head)
-        case Nil => Nil
+  lazy val mergeTopCircles: List[Circle] = {
+    @tailrec
+    def loop(rest: List[Circle], merged: Circle): List[Circle] =
+      rest match {
+        case Nil => List(merged)
+        case head :: tail if (merged.size < maxCircleSize) =>
+          val newMerged = head.merge(merged)
+          loop(tail, newMerged)
+        case _ => merged :: rest
       }
-    }
 
+    circleRank match {
+      case head :: tail =>
+        loop(tail, head)
+      case Nil => Nil
+    }
+  }
+
+  def evolve: Society =
     copy(circles = Nil)
       .addMembers(mergeTopCircles.flatMap(_.newGeneration(reproduction)))
-  }
 
   def parEvolve(numOfParallelization: Int): Society = {
     val subSize = circles.size / numOfParallelization
@@ -208,12 +216,35 @@ case class Society(circles: List[Circle],
 
 object Society {
 
-  implicit val showSociety: Show[Society] = (s: Society) => s"""
-       |  Top circles: ${s.circleRank.take(5).map(_.show).mkString("\n")}
-       |  Bottom circle: ${s.bottomCircle.map(_.show).getOrElse("")}
-       |  Num of circles ${s.circles.size}
-       |  Population: ${s.population}
-       |""".stripMargin
+  def showO[T: Show](o: Option[T]) = o.fold("")(_.show)
+
+  def summary(s: Society) =
+    s"""
+                               |  Top circles: ${s.circleRank
+         .take(5)
+         .map(_.show)
+         .mkString("\n")}
+                               |  Bottom circle: ${s.bottomCircle
+         .map(_.show)
+         .getOrElse("")}
+                               |  Num of circles ${s.circles.size}
+                               |  Population: ${s.population}
+                               |""".stripMargin
+
+  def report(s: Society) =
+    show"""
+                              |  Top people average power: ${showO(
+            s.topCircleAveragePower
+          )}
+                              |  Top people size: ${showO(
+            s.mergeTopCircles.headOption
+              .map(_.size)
+          )}
+                              |  Population: ${s.population}
+                              |  Population average power: ${s.populationAveragePower}
+                              |""".stripMargin
+
+  implicit val showSociety: Show[Society] = (s: Society) => report(s)
 
   /**
     * IQ statistics based on http://calteches.library.caltech.edu/2797/1/jensen.pdf
@@ -231,7 +262,7 @@ object Society {
       Reproduction(
         powerChangeMeanTowardsPopulationMean = 2,
         powerChangeStdDev = 12.5,
-        totalFertilityRate = 2.5
+        totalFertilityRate = 2.1
       )
 
     Society(Nil, reproduction, circleRange = 20, 500)
