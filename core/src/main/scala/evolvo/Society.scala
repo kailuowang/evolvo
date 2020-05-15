@@ -17,6 +17,7 @@ case class Individual(power: Power) extends AnyVal {
 case class Reproduction(powerChangeMeanTowardsPopulationMean: Double,
                         powerChangeStdDev: Double,
                         totalFertilityRate: Double,
+                        powerThresholdForReproduction: Power,
                         random: Random = new Random()) {
 
   def gaussian(mean: Double, stdDev: Double): Double =
@@ -86,7 +87,10 @@ case class Circle(private val members: List[Individual],
 
   def newGeneration(reproduction: Reproduction): List[Individual] = {
     val (left, right) =
-      members.splitAt(members.size / 2)
+      members
+        .filter(_.power > reproduction.powerThresholdForReproduction)
+        .splitAt(members.size / 2)
+
     left.zip(right).flatMap {
       case (father, mother) =>
         reproduction.mate(father, mother)
@@ -119,6 +123,11 @@ case class Society(circles: List[Circle],
     }
 
   lazy val populationAveragePower = allPowers.sum / population
+  lazy val populationMedianPower =
+    allPowers.sorted.get(population.toLong / 2.toLong)
+
+  lazy val topToMedian =
+    (topCircleAveragePower, populationMedianPower).mapN(_.toDouble / _)
 
   def topAndRest: (Option[Circle], List[Circle]) =
     topCircle.fold((none[Circle], circles)) { tc =>
@@ -242,6 +251,10 @@ object Society {
           )}
                               |  Population: ${s.population}
                               |  Population average power: ${s.populationAveragePower}
+                              |  Population median power: ${showO(
+            s.populationMedianPower
+          )}
+                              |  Top to Median: ${showO(s.topToMedian)}
                               |""".stripMargin
 
   implicit val showSociety: Show[Society] = (s: Society) => report(s)
@@ -258,14 +271,16 @@ object Society {
       random.nextGaussian() * stdDev + mean
     val initPopulation =
       List.fill(population)(Individual(gaussian(100, 15).toInt))
+
     val reproduction =
       Reproduction(
         powerChangeMeanTowardsPopulationMean = 2,
         powerChangeStdDev = 12.5,
-        totalFertilityRate = 2.1
+        totalFertilityRate = 2.1,
+        powerThresholdForReproduction = 50
       )
 
-    Society(Nil, reproduction, circleRange = 20, 500)
+    Society(Nil, reproduction, circleRange = 20, maxCircleSize = 500)
       .parAddMembers(initPopulation, parallelization)
   }
 }

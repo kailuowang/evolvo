@@ -36,8 +36,8 @@ lazy val libs =
 
 val root = project
   .in(file("."))
-  .dependsOn(core)
-  .aggregate(core)
+  .dependsOn(core, plot)
+  .aggregate(core, plot)
   .settings(commonSettings, crossScalaVersions := Nil)
 
 lazy val core = project

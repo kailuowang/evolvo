@@ -33,7 +33,7 @@ object Main {
     }
     val stream = Stream
       .iterate(initial)(_.parEvolve(parallelization))
-      .take(12)
+      .take(30)
       .zipWithIndex
 
     val run = scalaview.SwingImageViewer(

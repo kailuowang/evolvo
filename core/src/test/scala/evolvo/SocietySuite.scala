@@ -16,7 +16,8 @@ class SocietySuite extends ScalaCheckSuite {
           Reproduction(
             powerChangeMeanTowardsPopulationMean = -1,
             powerChangeStdDev = 5,
-            totalFertilityRate = 2.7
+            totalFertilityRate = 2.7,
+            powerThresholdForReproduction = 1
           ),
           range,
           maxSize

@@ -10,7 +10,7 @@ class ReproductionSuite extends ScalaCheckSuite {
     forAllNoShrink(Gen.choose(2d, 4d)) { fertilityRate =>
       val n = 10000
       val families = List.fill(n)(
-        Reproduction(-5, 10, totalFertilityRate = fertilityRate)
+        Reproduction(-5, 10, totalFertilityRate = fertilityRate, 50)
           .mate(Individual(100), Individual(100))
       )
       val averageNumOfChildren = families.map(_.size).sum / n.toDouble
