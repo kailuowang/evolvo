@@ -187,3 +187,24 @@ case class Society(circles: List[Circle],
 
   }
 }
+
+object Society {
+
+  def typical(population: Int, parallelization: Int = 4): Society = {
+    val random = new Random
+    def gaussian(mean: Double, stdDev: Double): Double =
+      random.nextGaussian() * stdDev + mean
+    val initPopulation =
+      List.fill(population)(Individual(gaussian(100, 15).toInt))
+    val reproduction =
+      Reproduction(
+        powerChangeMean = 0,
+        powerChangeStdDev = 12.5,
+        numOfKidsMean = 2.6,
+        numOfKidsStdDev = 0.8
+      )
+
+    Society(Nil, reproduction, circleRange = 15, 500)
+      .parAddMembers(initPopulation, parallelization)
+  }
+}

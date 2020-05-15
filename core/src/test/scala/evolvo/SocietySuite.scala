@@ -65,16 +65,9 @@ class SocietySuite extends ScalaCheckSuite {
     import scala.util.Random
 
     val parallelization = 14
-    def gaussian(mean: Double, stdDev: Double): Double =
-      Random.nextGaussian() * stdDev + mean
 
-    val initPopulation = List.fill(3000000)(Individual(gaussian(100, 15).toInt))
-    val reproduction =
-      Reproduction(powerChangeMean = 0, powerChangeStdDev = 12.5, 2.6, 0.8)
-
-    val society =
-      Society(Nil, reproduction, circleRange = 15, 500)
-        .parAddMembers(initPopulation, parallelization)
+    val initPopulation = 3000000
+    val society = Society.typical(initPopulation, parallelization)
 
     println(show(society, 0))
 
@@ -86,7 +79,7 @@ class SocietySuite extends ScalaCheckSuite {
       newGen
     }
 
-    assert(clue(r.population) >= initPopulation.size / 2)
+    assert(clue(r.population) >= initPopulation / 2)
 
   }
 }
