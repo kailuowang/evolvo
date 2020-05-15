@@ -1,27 +1,10 @@
 package evolvo
 import munit.ScalaCheckSuite
-import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop._
 import cats.implicits._
+import arbitraries._
 
 class SocietySuite extends ScalaCheckSuite {
-
-  implicit val arbIndividual = Arbitrary(
-    Gen.chooseNum(10, 100).map(Individual(_))
-  )
-
-  def show(s: Society, generation: Int): String = {
-
-    s"""
-       |+++++++++++++++++++++++
-       |Generation $generation
-       |
-       |  Top circles: ${s.circleRank.take(5).map(s.show).mkString("\n")}
-       |  Bottom circle: ${s.bottomCircle.map(s.show).getOrElse("")}
-       |  Num of circles ${s.circles.size}
-       |  Population: ${s.population}
-       |""".stripMargin
-  }
 
   property("organized into circles according to rule") {
     forAll { (candidates: List[Individual]) =>
@@ -30,7 +13,11 @@ class SocietySuite extends ScalaCheckSuite {
       val society =
         Society(
           Nil,
-          Reproduction(powerChangeMean = -1, powerChangeStdDev = 5, 2.7, 0.8),
+          Reproduction(
+            powerChangeMeanTowardsPopulationMean = -1,
+            powerChangeStdDev = 5,
+            totalFertilityRate = 2.7
+          ),
           range,
           maxSize
         ).parAddMembers(candidates, 2)
@@ -61,21 +48,31 @@ class SocietySuite extends ScalaCheckSuite {
     }
   }
 
+}
+
+class Study extends munit.FunSuite {
+
   test("new generation") {
-    import scala.util.Random
 
-    val parallelization = 14
+    val parallelization = 4
 
-    val initPopulation = 3000000
+    val initPopulation = 300000
     val society = Society.typical(initPopulation, parallelization)
-
-    println(show(society, 0))
+    println("Initial population")
+    println(society.show)
 
     val nOfGeneration = 20
 
     val r = (1 to nOfGeneration - 1).foldLeft(society) { (s, i) =>
       val newGen = s.parEvolve(parallelization)
-      println(show(newGen, i))
+      println(
+        show"""
+          |
+          |
+          |
+          |====================Generation $i =====================
+          |$newGen
+          |""".stripMargin)
       newGen
     }
 

@@ -6,6 +6,8 @@ import cats.implicits._
 import scala.collection.parallel.CollectionConverters._
 import Math.{max, min}
 
+import cats.Show
+
 import scala.annotation.tailrec
 case class Individual(power: Power) extends AnyVal {
   def mate(partner: Individual): Individual = {
@@ -13,21 +15,36 @@ case class Individual(power: Power) extends AnyVal {
   }
 }
 
-case class Reproduction(powerChangeMean: Double,
+case class Reproduction(powerChangeMeanTowardsPopulationMean: Double,
                         powerChangeStdDev: Double,
-                        numOfKidsMean: Double,
-                        numOfKidsStdDev: Double,
+                        totalFertilityRate: Double,
                         random: Random = new Random()) {
 
   def gaussian(mean: Double, stdDev: Double): Double =
     random.nextGaussian() * stdDev + mean
 
   def mate(father: Individual, mother: Individual): List[Individual] = {
-    List.fill(gaussian(numOfKidsMean, numOfKidsStdDev).toInt) {
+    val numOfChild: Int = {
+      val ceil = Math.ceil(totalFertilityRate)
+      val floor = Math.floor(totalFertilityRate)
+      val useUpperBound = random.nextDouble() < (totalFertilityRate - floor.toDouble)
+
+      (if (useUpperBound) ceil
+       else floor).toInt
+    }
+
+    List.fill(numOfChild) {
       val mean = (father.power + mother.power) / 2d
-      Individual(
-        max(0, (mean + gaussian(powerChangeMean, powerChangeStdDev)).toInt)
-      )
+      val changeEffectMean =
+        if (mean > 100) //regression towards the mean
+          -powerChangeMeanTowardsPopulationMean
+        else
+          powerChangeMeanTowardsPopulationMean
+
+      val changeEffect =
+        gaussian(changeEffectMean, powerChangeStdDev)
+
+      Individual(max(0, (mean + changeEffect).toInt))
     }
   }
 
@@ -78,6 +95,14 @@ case class Circle(private val members: List[Individual],
 
 }
 
+object Circle {
+  implicit val showForCircle: Show[Circle] = (circle: Circle) => s"""
+       |      Members: ${circle.size}
+       |      Top Power: ${circle.topPower}
+       |      Bottom Power: ${circle.bottomPower}
+       |""".stripMargin
+}
+
 case class Society(circles: List[Circle],
                    reproduction: Reproduction,
                    circleRange: Power,
@@ -124,13 +149,6 @@ case class Society(circles: List[Circle],
     copy(circles = Nil)
       .addMembers(mergeTopCircles.flatMap(_.newGeneration(reproduction)))
   }
-
-  def show(circle: Circle): String =
-    s"""
-       |      Members: ${circle.size}
-       |      Top Power: ${circle.topPower}
-       |      Bottom Power: ${circle.bottomPower}
-       |""".stripMargin
 
   def parEvolve(numOfParallelization: Int): Society = {
     val subSize = circles.size / numOfParallelization
@@ -190,6 +208,19 @@ case class Society(circles: List[Circle],
 
 object Society {
 
+  implicit val showSociety: Show[Society] = (s: Society) => s"""
+       |  Top circles: ${s.circleRank.take(5).map(_.show).mkString("\n")}
+       |  Bottom circle: ${s.bottomCircle.map(_.show).getOrElse("")}
+       |  Num of circles ${s.circles.size}
+       |  Population: ${s.population}
+       |""".stripMargin
+
+  /**
+    * IQ statistics based on http://calteches.library.caltech.edu/2797/1/jensen.pdf
+    * @param population
+    * @param parallelization
+    * @return
+    */
   def typical(population: Int, parallelization: Int = 4): Society = {
     val random = new Random
     def gaussian(mean: Double, stdDev: Double): Double =
@@ -198,13 +229,12 @@ object Society {
       List.fill(population)(Individual(gaussian(100, 15).toInt))
     val reproduction =
       Reproduction(
-        powerChangeMean = 0,
+        powerChangeMeanTowardsPopulationMean = 2,
         powerChangeStdDev = 12.5,
-        numOfKidsMean = 2.6,
-        numOfKidsStdDev = 0.8
+        totalFertilityRate = 2.5
       )
 
-    Society(Nil, reproduction, circleRange = 15, 500)
+    Society(Nil, reproduction, circleRange = 20, 500)
       .parAddMembers(initPopulation, parallelization)
   }
 }
