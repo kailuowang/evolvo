@@ -1,6 +1,6 @@
 # evolvo
 
-*Disclaimer:* **there is no political motivation in this at all and would like to remain so. Please keep any politcal discussion outside repo, thanks!**
+*Disclaimer:* There is no political motivation in this at all and would like to remain so. Please keep any politcal discussion outside repo, thanks!
 
 This little program simulates the evolution within a society.
 For lack of a better term, I use `power` to represent the overall fitness of an individual in a society. 
