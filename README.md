@@ -25,3 +25,4 @@ You will see
 ### Quick take away
 
 The model is still highly simplified of the real world situation. It shows that the evolution push the `power` of the top percentile much higher than the general population, caushing a widening gap between the elite class and the rest of the population. 
+This is intuitive in that while there is no selection pressure on the general population, the top circles remains selective in regards to genetic fitness, and people in those circles tends to breed with each other hence driving the natural selection in the group. 
